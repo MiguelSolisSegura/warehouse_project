@@ -1,16 +1,24 @@
 import os
-from launch import LaunchDescription
 from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-def generate_launch_description():
+def launch_setup(context, *args, **kwargs):
+    mode = context.launch_configurations['mode']
 
+    # Default values for map and RViz config directories
     cartographer_config_dir = os.path.join(get_package_share_directory('cartographer_slam'), 'config')
-    configuration_basename = 'cartographer.lua'
-    rviz_config_dir = os.path.join(get_package_share_directory('cartographer_slam'), 'config', 'mapper.rviz')
 
-    return LaunchDescription([
-        
+    if mode == 'real':
+        configuration_basename = 'cartographer.lua'
+        rviz_config_dir = os.path.join(get_package_share_directory('cartographer_slam'), 'config', 'mapper.rviz')
+    else:
+        configuration_basename = 'sim_cartographer.lua'
+        rviz_config_dir = os.path.join(get_package_share_directory('cartographer_slam'), 'config', 'sim_mapper.rviz')
+
+    return [
         Node(
             package='cartographer_ros', 
             executable='cartographer_node', 
@@ -35,4 +43,13 @@ def generate_launch_description():
             name='rviz_node',
             parameters=[{'use_sim_time': True}],
             arguments=['-d', rviz_config_dir])
-    ]) 
+    ]
+
+def generate_launch_description():
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            'mode',
+            default_value='real',
+            description='Simulation or real mode.'),
+        OpaqueFunction(function=launch_setup)
+    ])
