@@ -13,8 +13,10 @@ def launch_setup(context, *args, **kwargs):
 
     if map_file == 'warehouse_map_real.yaml':
         rviz_config_dir = os.path.join(get_package_share_directory('map_server'), 'config', 'map_server.rviz')
+        use_sim_time = False
     else:
         rviz_config_dir = os.path.join(get_package_share_directory('map_server'), 'config', 'sim_map_server.rviz')
+        use_sim_time = True
 
     return [
         Node(
@@ -22,7 +24,7 @@ def launch_setup(context, *args, **kwargs):
             executable='map_server',
             name='map_server',
             output='screen',
-            parameters=[{'use_sim_time': True}, 
+            parameters=[{'use_sim_time': use_sim_time}, 
                         {'yaml_filename':map_path} 
                        ]),
 
@@ -31,7 +33,7 @@ def launch_setup(context, *args, **kwargs):
             executable='lifecycle_manager',
             name='lifecycle_manager_mapper',
             output='screen',
-            parameters=[{'use_sim_time': True},
+            parameters=[{'use_sim_time': use_sim_time},
                         {'autostart': True},
                         {'node_names': ['map_server']}]),
 
@@ -39,7 +41,7 @@ def launch_setup(context, *args, **kwargs):
             package='rviz2',
             executable='rviz2',
             name='rviz_node',
-            parameters=[{'use_sim_time': True}],
+            parameters=[{'use_sim_time': use_sim_time}],
             arguments=['-d', rviz_config_dir])
     ]
 
