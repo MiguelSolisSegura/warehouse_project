@@ -16,6 +16,7 @@ def launch_setup(context, *args, **kwargs):
         controller_yaml = os.path.join(get_package_share_directory('path_planner_server'), 'config', 'controller.yaml')
         rviz_config_dir = os.path.join(get_package_share_directory('path_planner_server'), 'config', 'pathplanning.rviz')
         recovery_yaml = os.path.join(get_package_share_directory('localization_server'), 'config', 'recovery.yaml')
+        filters_yaml = os.path.join(get_package_share_directory('path_planner_server'), 'config', 'filters.yaml')
         cmd_vel_remap = '/cmd_vel'
         use_sim_time = False
         
@@ -24,6 +25,7 @@ def launch_setup(context, *args, **kwargs):
         controller_yaml = os.path.join(get_package_share_directory('path_planner_server'), 'config', 'sim_controller.yaml')
         rviz_config_dir = os.path.join(get_package_share_directory('path_planner_server'), 'config', 'sim_pathplanning.rviz')
         recovery_yaml = os.path.join(get_package_share_directory('localization_server'), 'config', 'sim_recovery.yaml')
+        filters_yaml = os.path.join(get_package_share_directory('path_planner_server'), 'config', 'sim_filters.yaml')
         cmd_vel_remap = '/diffbot_base_controller/cmd_vel_unstamped'
         use_sim_time = True
 
@@ -58,6 +60,22 @@ def launch_setup(context, *args, **kwargs):
             parameters=[bt_navigator_yaml]),
 
         Node(
+            package='nav2_map_server',
+            executable='map_server',
+            name='filter_mask_server',
+            output='screen',
+            emulate_tty=True,
+            parameters=[filters_yaml]),
+
+        Node(
+            package='nav2_map_server',
+            executable='costmap_filter_info_server',
+            name='costmap_filter_info_server',
+            output='screen',
+            emulate_tty=True,
+            parameters=[filters_yaml]),
+
+        Node(
             package='nav2_lifecycle_manager',
             executable='lifecycle_manager',
             name='lifecycle_manager_navigation',
@@ -65,13 +83,14 @@ def launch_setup(context, *args, **kwargs):
             parameters=[{'autostart': True},
                         {'node_names': ['planner_server',
                                         'controller_server', 'behavior_server',
-                                        'bt_navigator']}]),
+                                        'bt_navigator', 'filter_mask_server',
+                                        'costmap_filter_info_server']}]),
         Node(
             package='rviz2',
             executable='rviz2',
             name='rviz_nav_node',
             parameters=[{'use_sim_time': use_sim_time}],
-            arguments=['-d', rviz_config_dir]),
+            arguments=['-d', rviz_config_dir]),     
     ]
 
 def generate_launch_description():
