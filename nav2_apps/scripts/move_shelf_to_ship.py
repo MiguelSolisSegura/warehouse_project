@@ -4,8 +4,22 @@ from copy import deepcopy
 from geometry_msgs.msg import PoseStamped
 from rclpy.duration import Duration
 import rclpy
+from rclpy.node import Node
+from attach_service.srv import GoToLoading
 
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
+
+# Client for shelf lifting service
+class ClientAsync(Node):
+    def __init__(self):
+        super().__init__('go_to_loading')
+        self.client = self.create_client(GoToLoading, 'approach_shelf')
+        while not self.client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Service not available, waiting again...')
+
+    def send_request(self):
+        req = GoToLoading.Request()
+        self.future = self.client.call_async(req)
 
 # Shelf positions for picking
 shelf_positions = {
@@ -27,7 +41,6 @@ and at the pallet jack to remove it
 
 
 def main():
-
     ####################
     request_item_location = 'loading_position'
     request_destination = ''
@@ -75,17 +88,25 @@ def main():
 
     result = navigator.getResult()
     if result == TaskResult.SUCCEEDED:
-        print('Got product from ' + request_item_location +
-              '! Bringing product to shipping destination (' + request_destination + ')...')
-        '''
-        shipping_destination = PoseStamped()
-        shipping_destination.header.frame_id = 'map'
-        shipping_destination.header.stamp = navigator.get_clock().now().to_msg()
-        shipping_destination.pose.position.x = shipping_destinations[request_destination][0]
-        shipping_destination.pose.position.y = shipping_destinations[request_destination][1]
-        shipping_destination.pose.orientation.z = 1.0
-        shipping_destination.pose.orientation.w = 0.0
-        navigator.goToPose(shipping_destination)'''
+        print('Calling shelf lifting service.')
+
+        # Instance the service client
+        client = ClientAsync()
+        client.send_request()
+
+        while rclpy.ok():
+            rclpy.spin_once(client)
+            if client.future.done():
+                try:
+                    response = client.future.result()
+                except Exception as e:
+                    client.get_logger().info(
+                        'Service call failed %r' % (e,))
+                else:
+                    client.get_logger().info(f'Result of service call: {response.complete}')
+                break
+
+        client.destroy_node()
 
     elif result == TaskResult.CANCELED:
         print('Task at ' + request_item_location +
