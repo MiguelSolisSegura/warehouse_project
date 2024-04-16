@@ -3,9 +3,11 @@
 #include <memory>
 #include <string>
 #include "attach_service/srv/go_to_loading.hpp"
+#include "rclcpp/duration.hpp"
 #include "rclcpp/logging.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp/timer.hpp"
+#include "rclcpp/utilities.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include <vector>
 #include <cmath>
@@ -69,33 +71,29 @@ private:
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> _tf_static_broadcaster;
 
     // Final approach attributes
-    rclcpp::TimerBase::SharedPtr _approach_timer;
 
     // Methods
-    void handle_service(const std::shared_ptr<GoToLoading::Request> request, std::shared_ptr<GoToLoading::Response> response) {
+    void handle_service(const std::shared_ptr<GoToLoading::Request>, std::shared_ptr<GoToLoading::Response> response) {
         // Handle request
         RCLCPP_INFO(this->get_logger(), "Legs detected: %i.", _num_legs);
-        if (_num_legs == 2 && request->attach_to_shelf) {
+        if (_num_legs == 2) {
             // Publish cart frame
-            RCLCPP_INFO(this->get_logger(), "Publishing cart frame");
+            RCLCPP_INFO(this->get_logger(), "Publishing cart frame.");
             this->publish_cart_frame();
             // Handle approach
-            RCLCPP_INFO(this->get_logger(), "True request");
-            RCLCPP_INFO(this->get_logger(), "Approaching to cart.");    
-            //_approach_timer = this->create_wall_timer(100ms, std::bind(&ApproachShelf::approach_cart, this));
+            RCLCPP_INFO(this->get_logger(), "Approaching to cart.");
+            if (!this->approach_cart("robot_front_laser_base_link", "cart_frame")) {
+                RCLCPP_INFO(this->get_logger(), "The robot did not aligned to the cart correctly.");
+                response->complete = false;
+            }
+            if (!this->approach_cart("robot_front_laser_base_link", "cart_center")) {
+                RCLCPP_INFO(this->get_logger(), "The robot did not get under the cart correctly.");
+                response->complete = false;
+            }
             response->complete = true;
         }
-        else if (_num_legs == 2 && !request->attach_to_shelf){
-            // Publish cart frame
-            RCLCPP_INFO(this->get_logger(), "Publishing cart frame");
-            this->publish_cart_frame();
-            // Handle false request
-            RCLCPP_INFO(this->get_logger(), "False request.");
-            RCLCPP_WARN(this->get_logger(), "The final approach is ommited.");
-            response->complete = false;
-        }
         else{
-            RCLCPP_ERROR(this->get_logger(), "Not enough legs, returning false.");
+            RCLCPP_ERROR(this->get_logger(), "Not enough legs, aborting approach.");
             response->complete = false;
         }   
     }
@@ -153,23 +151,23 @@ private:
         float delta = theta - beta;
         // Lambda: Angle for vertex D:C/2 (Law of Sines)
         float lambda = std::asin(2 * b * std::sin(delta) / c);
-        // Tau: Agnle of correction for cart
+        // Tau: Angle of correction for cart
         float tau = gamma + (M_PI/2 - lambda);
 
         RCLCPP_DEBUG(this->get_logger(), "X coordinate from laser: %.2f.", x);
         RCLCPP_DEBUG(this->get_logger(), "Y coordinate from laser: %.2f.", y);
 
         // Transform coordinates from laser to odom
-        std::string child_frame = "robot_front_laser_base_link";
-        std::string parent_fame = "odom";
+        std::string laser_frame = "robot_front_laser_base_link";
+        std::string parent_fame = "map";
         
         // Look up for the transformation between odom and laser frames
         try {
             geometry_msgs::msg::TransformStamped odom_to_laser;
-            odom_to_laser = _tf_buffer->lookupTransform("odom", "robot_front_laser_base_link", tf2::TimePointZero);
+            odom_to_laser = _tf_buffer->lookupTransform(parent_fame, "robot_front_laser_base_link", tf2::TimePointZero);
 
             geometry_msgs::msg::TransformStamped laser_to_cart;
-            laser_to_cart.header.frame_id = "robot_front_laser_base_link";
+            laser_to_cart.header.frame_id = laser_frame;
             laser_to_cart.child_frame_id = "cart_frame";
             laser_to_cart.transform.translation.x = x;  
             laser_to_cart.transform.translation.y = y;
@@ -180,7 +178,7 @@ private:
             geometry_msgs::msg::TransformStamped cart_to_odom;
             tf2::doTransform(laser_to_cart, cart_to_odom, odom_to_laser);
             cart_to_odom.header.stamp = this->get_clock()->now();
-            cart_to_odom.header.frame_id = "odom";
+            cart_to_odom.header.frame_id = parent_fame;
             cart_to_odom.child_frame_id = "cart_frame";
 
             _tf_static_broadcaster->sendTransform(cart_to_odom);
@@ -188,79 +186,63 @@ private:
             geometry_msgs::msg::TransformStamped cart_to_center;
             cart_to_center.header.frame_id = "cart_frame";
             cart_to_center.child_frame_id = "cart_center";
-            cart_to_center.transform.translation.x = 0.5; 
+            cart_to_center.transform.translation.x = 0.75; 
 
             geometry_msgs::msg::TransformStamped cart_center_to_odom;
             tf2::doTransform(cart_to_center, cart_center_to_odom, cart_to_odom);
             cart_center_to_odom.header.stamp = this->get_clock()->now();
-            cart_center_to_odom.header.frame_id = "odom";
+            cart_center_to_odom.header.frame_id = parent_fame;
             cart_center_to_odom.child_frame_id = "cart_center";
 
             _tf_static_broadcaster->sendTransform(cart_center_to_odom);
-
-
-        /*
-            auto tf_time = tf2::TimePointZero;
-            t = _tf_buffer->lookupTransform(parent_fame, child_frame, tf_time);
-            // Create a PointStamped for the point (x, y)
-            geometry_msgs::msg::PointStamped laser_point;
-            laser_point.point.x = x;
-            laser_point.point.y = y;
-            laser_point.header.frame_id = child_frame;
-            laser_point.header.stamp = t.header.stamp;
-            // Transform the point from laser_link to odom
-            geometry_msgs::msg::PointStamped odom_point;
-            tf2::doTransform(laser_point, odom_point, t);
-            // Now odom_point contains the (x, y) coordinates in the "odom" frame
-            RCLCPP_DEBUG(this->get_logger(), "Transformed X coordinate in odom: %.2f.", odom_point.point.x);
-            RCLCPP_DEBUG(this->get_logger(), "Transformed Y coordinate in odom: %.2f.", odom_point.point.y);
-            RCLCPP_DEBUG(this->get_logger(), "Transformed Z coordinate in odom: %.2f.", odom_point.point.z);
-            // Create new frame
-            geometry_msgs::msg::TransformStamped cart_frame;
-            cart_frame = t;
-            cart_frame.child_frame_id = "cart_frame";
-            cart_frame.transform.translation.x = odom_point.point.x;
-            cart_frame.transform.translation.y = odom_point.point.y;
-            
-            // Broadcast the new frame
-            _tf_static_broadcaster->sendTransform(cart_frame);*/
         }
         catch (const tf2::TransformException & ex) {
-            RCLCPP_INFO(this->get_logger(), "Could not transform from robot_front_laser_base_link to odom");
+            RCLCPP_INFO(this->get_logger(), "Could not perform some of the transformations. Please check the frame names.");
             RCLCPP_INFO(this->get_logger(), "%s", ex.what());
         }
     }
 
-    void approach_cart() {
-        geometry_msgs::msg::TransformStamped t;
-        t = _tf_buffer->lookupTransform("robot_base_link", "cart_frame", tf2::TimePointZero);
-        // Compute velocities
-        auto x = t.transform.translation.x + 0.5;
-        auto y = t.transform.translation.y;
-  
-        float error_distance = std::sqrt(x*x + y*y);
-        float error_yaw = std::atan2(y, x);
-        RCLCPP_DEBUG(this->get_logger(), "Error distance: %.4f", error_distance);
-        RCLCPP_DEBUG(this->get_logger(), "Error yaw: %.4f", error_yaw);
-        Twist vel_msg;
-        if (error_distance > 0.01) {
-            vel_msg.angular.z = -0.5 * error_yaw;  
-            vel_msg.linear.x = std::min(1.0 * error_distance, 0.75);
-            RCLCPP_DEBUG(this->get_logger(), "Z angular: %.3f", vel_msg.angular.z);
-            RCLCPP_DEBUG(this->get_logger(), "X linear: %.3f", vel_msg.linear.x);
+    bool approach_cart(std::string origin_frame, std::string target_frame) {
+        auto start_time = this->get_clock()->now();
+        auto elapsed_time = this->get_clock()->now() - start_time;
+        rclcpp::Duration timeout(25, 0);
+        bool completed = false;
+        while (rclcpp::ok() && elapsed_time < timeout) {
+            elapsed_time = this->get_clock()->now() - start_time;
+            RCLCPP_INFO(this->get_logger(), "Elapsed time: %.2f seconds", elapsed_time.seconds());
+            geometry_msgs::msg::TransformStamped t;
+            t = _tf_buffer->lookupTransform(origin_frame, target_frame, tf2::TimePointZero);
+            // Compute velocities
+            auto x = t.transform.translation.x;
+            auto y = t.transform.translation.y;
+    
+            float error_distance = std::sqrt(x*x + y*y);
+            float error_yaw = std::atan2(y, x);
+            RCLCPP_DEBUG(this->get_logger(), "Error distance: %.4f", error_distance);
+            RCLCPP_DEBUG(this->get_logger(), "Error yaw: %.4f", error_yaw);
+            Twist vel_msg;
+            if (error_distance > 0.02) {
+                vel_msg.angular.z = -1.0 * error_yaw;  
+                vel_msg.linear.x = std::min(2.0 * error_distance, 0.1);
+                RCLCPP_DEBUG(this->get_logger(), "Z angular: %.3f", vel_msg.angular.z);
+                RCLCPP_DEBUG(this->get_logger(), "X linear: %.3f", vel_msg.linear.x);
+            }
+            else {
+                vel_msg.angular.z = 0;
+                vel_msg.linear.x = 0;
+                RCLCPP_INFO(this->get_logger(), "Aproach to %s completed.", target_frame.c_str());
+                //RCLCPP_INFO(this->get_logger(), "Lifting the shelf.");
+                //Empty msg;
+                //_elevator_publisher->publish(msg);
+                //RCLCPP_INFO(this->get_logger(), "Process finished.");
+                completed = true;
+                break;
+            }
+            // Pubish velocity
+            _publisher->publish(vel_msg);
+            rclcpp::sleep_for(100ms);
         }
-        else {
-            vel_msg.angular.z = 0;
-            vel_msg.linear.x = 0;
-            RCLCPP_INFO(this->get_logger(), "Final approach completed.");
-            _approach_timer->cancel();
-            RCLCPP_INFO(this->get_logger(), "Lifting the shelf.");
-            Empty msg;
-            _elevator_publisher->publish(msg);
-            RCLCPP_INFO(this->get_logger(), "Process finished.");
-        }
-        // Pubish velocity
-        _publisher->publish(vel_msg);
+        return completed;   
     }
 };
 

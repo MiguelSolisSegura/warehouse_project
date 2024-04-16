@@ -7,6 +7,8 @@ Panels:
         - /Global Options1
         - /Status1
         - /Map1/Topic1
+        - /TF1
+        - /TF1/Frames1
         - /ParticleCloud1/Topic1
       Splitter Ratio: 0.5
     Tree Height: 553
@@ -116,7 +118,7 @@ Visualization Manager:
         robot_base_docking_contact_link:
           Value: false
         robot_base_footprint:
-          Value: true
+          Value: false
         robot_base_link:
           Value: false
         robot_evelator_base_link:
@@ -124,7 +126,7 @@ Visualization Manager:
         robot_front_cover_link:
           Value: false
         robot_front_laser_base_link:
-          Value: false
+          Value: true
         robot_omni_backwheel_link:
           Value: false
         robot_omni_front_leftwheel_link:
@@ -137,7 +139,7 @@ Visualization Manager:
       Name: TF
       Show Arrows: true
       Show Axes: true
-      Show Names: false
+      Show Names: true
       Tree:
         map:
           odom:
@@ -353,7 +355,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 10.791706085205078
+      Distance: 10.483141899108887
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -368,10 +370,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5647963285446167
+      Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 6.258583068847656
+      Yaw: 6.24858283996582
     Saved: ~
 Window Geometry:
   Displays:
