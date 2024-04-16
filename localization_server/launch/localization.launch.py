@@ -44,6 +44,12 @@ def launch_setup(context, *args, **kwargs):
             parameters=[{'use_sim_time': use_sim_time},
                         {'autostart': True},
                         {'node_names': ['map_server', 'amcl']}]),
+        
+        Node(
+            package='attach_service',
+            executable='approach_service_server',
+            name='approach_service_server',
+            output='screen'),
 
         Node(
             package='rviz2',
