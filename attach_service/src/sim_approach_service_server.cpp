@@ -48,7 +48,7 @@ public:
         // Intizalize static transform broadcaster
         _tf_static_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
         // Create a publisher for Twist anc Empty messages
-        _publisher = this->create_publisher<Twist>("/cmd_vel", 1);
+        _publisher = this->create_publisher<Twist>("/diffbot_base_controller/cmd_vel_unstamped", 1);
         _elevator_publisher = this->create_publisher<String>("/elevator_up", 1);
         // Inform server creation
         RCLCPP_INFO(this->get_logger(), "Service server started.");
@@ -77,22 +77,17 @@ private:
     void handle_service(const std::shared_ptr<GoToLoading::Request>, std::shared_ptr<GoToLoading::Response> response) {
         // Handle request
         RCLCPP_INFO(this->get_logger(), "Legs detected: %i.", _num_legs);
-        RCLCPP_INFO(this->get_logger(), "L: %i R: %i.", _leg_data[0].first, _leg_data[1].first);
-        
         if (_num_legs == 2) {
             // Publish cart frame
             RCLCPP_INFO(this->get_logger(), "Publishing cart frame.");
             this->publish_cart_frame();
-            
             // Handle approach
             RCLCPP_INFO(this->get_logger(), "Approaching to cart.");
-            if (!this->approach_cart("robot_front_laser_link", "cart_frame", false)) {
+            if (!this->approach_cart("robot_front_laser_base_link", "cart_frame", false)) {
                 RCLCPP_INFO(this->get_logger(), "The robot did not aligned to the cart correctly.");
                 response->complete = false;
             }
-            response->complete = true; 
-  
-            if (!this->approach_cart("robot_front_laser_link", "cart_center", false)) {
+            if (!this->approach_cart("robot_front_laser_base_link", "cart_center", true)) {
                 RCLCPP_INFO(this->get_logger(), "The robot did not get under the cart correctly.");
                 response->complete = false;
             }
@@ -111,7 +106,7 @@ private:
         bool leg_flag = false;
         int leg_start;
         for (int i = 0; i < int(msg->intensities.size()); i++) {
-            if (msg->intensities[i] > 5000.0) {
+            if (msg->intensities[i] > 100.0) {
                 RCLCPP_DEBUG(this->get_logger(), "High reading at: %i.", i);
                 if (!leg_flag) {
                     leg_flag = true;
@@ -164,7 +159,7 @@ private:
         RCLCPP_DEBUG(this->get_logger(), "Y coordinate from laser: %.2f.", y);
 
         // Transform coordinates from laser to odom
-        std::string laser_frame = "robot_front_laser_link";
+        std::string laser_frame = "robot_front_laser_base_link";
         std::string parent_fame = "map";
         
         // Look up for the transformation between odom and laser frames
@@ -174,7 +169,7 @@ private:
             attempts += 1;
             try {
                 geometry_msgs::msg::TransformStamped odom_to_laser;
-                odom_to_laser = _tf_buffer->lookupTransform(parent_fame, laser_frame, tf2::TimePointZero);
+                odom_to_laser = _tf_buffer->lookupTransform(parent_fame, "robot_front_laser_base_link", tf2::TimePointZero);
 
                 geometry_msgs::msg::TransformStamped laser_to_cart;
                 laser_to_cart.header.frame_id = laser_frame;
@@ -196,7 +191,7 @@ private:
                 geometry_msgs::msg::TransformStamped cart_to_center;
                 cart_to_center.header.frame_id = "cart_frame";
                 cart_to_center.child_frame_id = "cart_center";
-                cart_to_center.transform.translation.x = 0.45; 
+                cart_to_center.transform.translation.x = 0.75; 
 
                 geometry_msgs::msg::TransformStamped cart_center_to_odom;
                 tf2::doTransform(cart_to_center, cart_center_to_odom, cart_to_odom);

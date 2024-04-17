@@ -43,6 +43,18 @@ ament_target_dependencies(approach_service_server
   std_msgs
 )
 
+add_executable(sim_approach_service_server src/sim_approach_service_server.cpp)
+ament_target_dependencies(sim_approach_service_server
+  rclcpp
+  sensor_msgs
+  custom_attach_interface
+  geometry_msgs
+  tf2_ros
+  tf2
+  tf2_geometry_msgs
+  std_msgs
+)
+
 # Custom interface
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GoToLoading.srv"
@@ -52,9 +64,11 @@ rosidl_get_typesupport_target(cpp_typesupport_target
   ${PROJECT_NAME} rosidl_typesupport_cpp)
 
 target_link_libraries(approach_service_server "${cpp_typesupport_target}")
+target_link_libraries(sim_approach_service_server "${cpp_typesupport_target}")
 
 install(TARGETS
   approach_service_server
+  sim_approach_service_server
   DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
