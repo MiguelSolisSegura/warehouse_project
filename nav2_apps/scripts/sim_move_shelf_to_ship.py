@@ -91,7 +91,7 @@ class RobotMover(Node):
     def __init__(self):
         super().__init__('robot_mover')
         self.publisher_ = self.create_publisher(Twist, '/diffbot_base_controller/cmd_vel_unstamped', 10)
-        self.duration = 8  # Set the duration for which the robot should move back
+        self.duration = 6  # Set the duration for which the robot should move back
 
     def move_back(self):
         # Start time
@@ -116,17 +116,9 @@ class RobotMover(Node):
 shelf_positions = {
     "init": [0.0, 0.0, 0.0, 1.0],
     "loading_position": [5.56071, -0.503011, -0.701128, 0.713036],
-    "corridor": [2.67625, 0.166187, 0.717601, 0.696455],
+    "corridor": [2.41296, 0.171196, 0.70367, 0.710527],
     "shipping_position": [2.52769, 1.32043, 0.696154, 0.717892]
     }
-
-'''
-Basic item picking demo. In this demonstration, the expectation
-is that a person is waiting at the item shelf to put the item on the robot
-and at the pallet jack to remove it
-(probably with a button for 'got item, robot go do next task').
-'''
-
 
 def main():
     rclpy.init()
