@@ -68,6 +68,9 @@ target_link_libraries(sim_approach_service_server "${cpp_typesupport_target}")
 
 install(TARGETS
   approach_service_server
+  DESTINATION lib/${PROJECT_NAME})
+
+install(TARGETS
   sim_approach_service_server
   DESTINATION lib/${PROJECT_NAME})
 

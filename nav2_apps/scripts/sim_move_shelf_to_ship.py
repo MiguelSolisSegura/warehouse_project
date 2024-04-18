@@ -91,18 +91,23 @@ class RobotMover(Node):
     def __init__(self):
         super().__init__('robot_mover')
         self.publisher_ = self.create_publisher(Twist, '/diffbot_base_controller/cmd_vel_unstamped', 10)
-        self.duration = 5  # Set the duration for which the robot should move back
+        self.duration = 8  # Set the duration for which the robot should move back
 
     def move_back(self):
+        # Start time
+        start_time = time.time()
+
         # Publish a message to move the robot backwards
         msg = Twist()
-        msg.linear.x = -0.1  # Move backwards
+        msg.linear.x = -0.25  # Move backwards
         self.publisher_.publish(msg)
         self.get_logger().info('Moving the robot backwards')
 
-        # Sleep for the duration after which the robot should stop
-        time.sleep(self.duration)
-
+        while time.time() - start_time < self.duration:
+            self.publisher_.publish(msg)
+            self.get_logger().info('Moving the robot backwards')
+            time.sleep(0.1)  # Adjust the sleep time as needed for responsiveness
+        
         # Stop the robot by publishing zero velocities
         self.publisher_.publish(Twist())
         self.get_logger().info('Stopping the robot')
@@ -110,7 +115,7 @@ class RobotMover(Node):
 # Shelf positions for picking
 shelf_positions = {
     "init": [0.0, 0.0, 0.0, 1.0],
-    "loading_position": [5.68239, -0.0438051, -0.719685, 0.694301],
+    "loading_position": [5.56071, -0.503011, -0.701128, 0.713036],
     "corridor": [2.67625, 0.166187, 0.717601, 0.696455],
     "shipping_position": [2.52769, 1.32043, 0.696154, 0.717892]
     }

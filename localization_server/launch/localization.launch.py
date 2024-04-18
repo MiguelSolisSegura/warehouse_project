@@ -19,7 +19,7 @@ def launch_setup(context, *args, **kwargs):
     else:
         rviz_config_dir = os.path.join(get_package_share_directory('localization_server'), 'config', 'sim.rviz')
         localization_yaml = os.path.join(get_package_share_directory('localization_server'), 'config', 'sim_amcl_config.yaml')
-        server_excecutable = 'sim_pproach_service_server'
+        server_excecutable = 'sim_approach_service_server'
         use_sim_time = True
 
     return [
@@ -47,11 +47,11 @@ def launch_setup(context, *args, **kwargs):
                         {'autostart': True},
                         {'node_names': ['map_server', 'amcl']}]),
         
-        # Node(
-        #     package='attach_service',
-        #     executable=server_excecutable,
-        #     name=server_excecutable,
-        #     output='screen'),
+        Node(
+            package='attach_service',
+            executable=server_excecutable,
+            name=server_excecutable,
+            output='screen'),
 
         Node(
             package='rviz2',
