@@ -91,17 +91,22 @@ class RobotMover(Node):
     def __init__(self):
         super().__init__('robot_mover')
         self.publisher_ = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.duration = 5  # Set the duration for which the robot should move back
+        self.duration = 6  # Set the duration for which the robot should move back
 
     def move_back(self):
+        # Start time
+        start_time = time.time()
+
         # Publish a message to move the robot backwards
         msg = Twist()
-        msg.linear.x = -0.1  # Move backwards
+        msg.linear.x = -0.2  # Move backwards
         self.publisher_.publish(msg)
         self.get_logger().info('Moving the robot backwards')
 
-        # Sleep for the duration after which the robot should stop
-        time.sleep(self.duration)
+        while time.time() - start_time < self.duration:
+            self.publisher_.publish(msg)
+            self.get_logger().info('Moving the robot backwards')
+            time.sleep(0.1)  # Adjust the sleep time as needed for responsiveness
 
         # Stop the robot by publishing zero velocities
         self.publisher_.publish(Twist())
@@ -111,18 +116,9 @@ class RobotMover(Node):
 shelf_positions = {
     "init": [-2.54849, -0.278804, -0.00120911, 0.999999],
     "loading_position": [1.85362, -0.193069, -0.699828, 0.714312],
-    "corridor": [-0.470976, -0.604368, 0.686484, 0.727145],
-
-    "shipping_position": [2.52769, 1.32043, 0.696154, 0.717892]
+    "corridor": [-0.82439, -0.557178, 0.699663, 0.714473],
+    "shipping_position": [-0.591861, 0.867609, 0.715875, 0.698228]
     }
-
-'''
-Basic item picking demo. In this demonstration, the expectation
-is that a person is waiting at the item shelf to put the item on the robot
-and at the pallet jack to remove it
-(probably with a button for 'got item, robot go do next task').
-'''
-
 
 def main():
     rclpy.init()
@@ -153,68 +149,65 @@ def main():
     shelf_item_pose.pose.orientation.w = shelf_positions[request_item_location][3]
     print('Received request for item picking at ' + request_item_location + '.')
 
-    success = False
-    while (not success):
-        try: 
-            navigator.goToPose(shelf_item_pose)
-            success = True
-        except: 
-            pass
+    for n in range(5):
+        navigator.goToPose(shelf_item_pose)
+        i = 0
+        while not navigator.isTaskComplete():
+            i = i + 1
+            feedback = navigator.getFeedback()
+            if feedback and i % 5 == 0:
+                print('Estimated time of arrival at ' + request_item_location +
+                    ' for worker: ' + '{0:.0f}'.format(
+                        Duration.from_msg(feedback.estimated_time_remaining).nanoseconds / 1e9)
+                    + ' seconds.')
 
-    i = 0
-    while not navigator.isTaskComplete():
-        i = i + 1
-        feedback = navigator.getFeedback()
-        if feedback and i % 5 == 0:
-            print('Estimated time of arrival at ' + request_item_location +
-                  ' for worker: ' + '{0:.0f}'.format(
-                      Duration.from_msg(feedback.estimated_time_remaining).nanoseconds / 1e9)
-                  + ' seconds.')
+        result = navigator.getResult()
+        if result == TaskResult.SUCCEEDED:
+            # Instance the elevator publisher
+            elevator_publisher = ElevatorPublisher()
 
-    result = navigator.getResult()
-    if result == TaskResult.SUCCEEDED:
-        # Instance the elevator publisher
-        elevator_publisher = ElevatorPublisher()
+            # Instance the footprint publisher
+            footprint_publisher = PolygonPublisher()
+            footprint_publisher.publish_polygon('square')
 
-        # Instance the footprint publisher
-        footprint_publisher = PolygonPublisher()
-        footprint_publisher.publish_polygon('square')
+            # Instance the service client for shelf lifting
+            client = ClientAsync()
+            print('Calling shelf lifting service.')
+            client.send_request()
 
-        # Instance the service client for shelf lifting
-        client = ClientAsync()
-        print('Calling shelf lifting service.')
-        client.send_request()
+            
 
-        
-        '''
-        while rclpy.ok():
-            rclpy.spin_once(client)
-            if client.future.done():
-                try:
-                    response = client.future.result()
-                except Exception as e:
-                    client.get_logger().info(
-                        'Service call failed %r' % (e,))
-                else:
-                    client.get_logger().info(f'Result of service call: {response.complete}')
-                    
-                break
+            while rclpy.ok():
+                rclpy.spin_once(client)
+                if client.future.done():
+                    try:
+                        response = client.future.result()
+                    except Exception as e:
+                        client.get_logger().info(
+                            'Service call failed %r' % (e,))
+                    else:
+                        client.get_logger().info(f'Result of service call: {response.complete}')
+                        
+                    break
 
-        client.destroy_node() '''
+            client.destroy_node()
+            break
 
-    elif result == TaskResult.CANCELED:
-        print('Task at ' + request_item_location +
-              ' was canceled. Returning to staging point...')
-        initial_pose.header.stamp = navigator.get_clock().now().to_msg()
-        navigator.goToPose(initial_pose)
+        elif result == TaskResult.CANCELED:
+            print('Task at ' + request_item_location +
+                ' was canceled. Returning to staging point...')
+            initial_pose.header.stamp = navigator.get_clock().now().to_msg()
+            navigator.goToPose(initial_pose)
+            break
 
-    elif result == TaskResult.FAILED:
-        print('Task at ' + request_item_location + ' failed!')
-        exit(-1)
+        elif result == TaskResult.FAILED:
+            print('Task at ' + request_item_location + f' failed on its {n + 1} attempt.')
+            if n + 1 == 5: exit(-1)
+            time.sleep(1.0)
 
-    '''
+    
 
-    # Got to the corridor
+    # Go to the corridor
     request_item_location = 'corridor'
     shelf_item_pose = PoseStamped()
     shelf_item_pose.header.frame_id = 'map'
@@ -249,6 +242,8 @@ def main():
     elif result == TaskResult.FAILED:
         print('Task at ' + request_item_location + ' failed!')
         exit(-1)
+
+    
 
     # Got to the shipping position
     request_item_location = 'shipping_position'
@@ -327,7 +322,7 @@ def main():
         print('Task at ' + request_item_location + ' failed!')
         exit(-1)
 
-    '''
+
 
     while not navigator.isTaskComplete():
         pass

@@ -208,7 +208,7 @@ def main():
         print('Task at ' + request_item_location + ' failed!')
         exit(-1)
 
-    # Got to the corridor
+    # Go to the corridor
     request_item_location = 'corridor'
     shelf_item_pose = PoseStamped()
     shelf_item_pose.header.frame_id = 'map'

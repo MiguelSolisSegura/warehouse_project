@@ -92,7 +92,7 @@ private:
             }
             response->complete = true; 
   
-            if (!this->approach_cart("robot_front_laser_link", "cart_center", false)) {
+            if (!this->approach_cart("robot_front_laser_link", "cart_center", true)) {
                 RCLCPP_INFO(this->get_logger(), "The robot did not get under the cart correctly.");
                 response->complete = false;
             }
@@ -196,7 +196,7 @@ private:
                 geometry_msgs::msg::TransformStamped cart_to_center;
                 cart_to_center.header.frame_id = "cart_frame";
                 cart_to_center.child_frame_id = "cart_center";
-                cart_to_center.transform.translation.x = 0.45; 
+                cart_to_center.transform.translation.x = 0.40; 
 
                 geometry_msgs::msg::TransformStamped cart_center_to_odom;
                 tf2::doTransform(cart_to_center, cart_center_to_odom, cart_to_odom);
@@ -263,7 +263,7 @@ private:
                             RCLCPP_INFO(this->get_logger(), "Lifting the shelf.");
                             String msg;
                             _elevator_publisher->publish(msg);
-                            rclcpp::sleep_for(5s);
+                            rclcpp::sleep_for(6s);
                             RCLCPP_INFO(this->get_logger(), "Lift finished.");
                             RCLCPP_INFO(this->get_logger(), "Moving backwards.");
                             start_time = this->get_clock()->now();
