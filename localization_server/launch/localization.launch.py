@@ -53,13 +53,6 @@ def launch_setup(context, *args, **kwargs):
             name=server_excecutable,
             output='screen'),
 
-        Node(
-            package='rviz2',
-            executable='rviz2',
-            name='rviz_node',
-            parameters=[{'use_sim_time': use_sim_time}],
-            arguments=['-d', rviz_config_dir]),
-
         ExecuteProcess(
             cmd=['ros2', 'service', 'call', 
                  '/reinitialize_global_localization', 'std_srvs/srv/Empty'],         
