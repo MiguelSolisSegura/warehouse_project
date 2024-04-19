@@ -78,13 +78,20 @@ class ElevatorPublisher(Node):
     def __init__(self):
         super().__init__('elevator_publisher')
         self.publisher_ = self.create_publisher(String, '/elevator_down', 10)
+        self.lift_publisher_ = self.create_publisher(String, '/elevator_up', 10)
 
-    def publish_msg(self):
+    def drop(self):
         msg = String()
-
         self.publisher_.publish(msg)
-        time.sleep(5)
+        time.sleep(6)
         self.get_logger().info(f'Shelf unloaded')
+        return None
+
+    def lift(self):
+        msg = String()
+        self.lift_publisher_.publish(msg)
+        time.sleep(6)
+        self.get_logger().info(f'Shelf loaded')
         return None
 
 class RobotMover(Node):
@@ -107,7 +114,7 @@ class RobotMover(Node):
             self.publisher_.publish(msg)
             self.get_logger().info('Moving the robot backwards')
             time.sleep(0.1)  # Adjust the sleep time as needed for responsiveness
-        
+
         # Stop the robot by publishing zero velocities
         self.publisher_.publish(Twist())
         self.get_logger().info('Stopping the robot')
@@ -149,39 +156,46 @@ def main():
     shelf_item_pose.pose.orientation.w = shelf_positions[request_item_location][3]
     print('Received request for item picking at ' + request_item_location + '.')
 
-    success = False
-    while (not success):
-        try: 
-            navigator.goToPose(shelf_item_pose)
-            success = True
-        except: 
-            pass
+    for n in range(5):
+        navigator.goToPose(shelf_item_pose)
+        i = 0
+        while not navigator.isTaskComplete():
+            i = i + 1
+            feedback = navigator.getFeedback()
+            if feedback and i % 5 == 0:
+                print('Estimated time of arrival at ' + request_item_location +
+                    ' for worker: ' + '{0:.0f}'.format(
+                        Duration.from_msg(feedback.estimated_time_remaining).nanoseconds / 1e9)
+                    + ' seconds.')
 
-    i = 0
-    while not navigator.isTaskComplete():
-        i = i + 1
-        feedback = navigator.getFeedback()
-        if feedback and i % 5 == 0:
-            print('Estimated time of arrival at ' + request_item_location +
-                  ' for worker: ' + '{0:.0f}'.format(
-                      Duration.from_msg(feedback.estimated_time_remaining).nanoseconds / 1e9)
-                  + ' seconds.')
+        result = navigator.getResult()
+        if result == TaskResult.SUCCEEDED:
+            print(f'Task completed successfully on {n} attempt.')
+            break
 
-    result = navigator.getResult()
-    if result == TaskResult.SUCCEEDED:
-        # Instance the elevator publisher
-        elevator_publisher = ElevatorPublisher()
+        elif result == TaskResult.CANCELED:
+            print('Task at ' + request_item_location +
+                ' was canceled. Returning to staging point...')
+            initial_pose.header.stamp = navigator.get_clock().now().to_msg()
+            navigator.goToPose(initial_pose)
+            break
 
-        # Instance the footprint publisher
-        footprint_publisher = PolygonPublisher()
-        footprint_publisher.publish_polygon('square')
+        elif result == TaskResult.FAILED:
+            print('Task at ' + request_item_location + f' failed on its {n + 1} attempt.')
+            if n + 1 == 5: exit(-1)
+            time.sleep(1.0)
 
-        # Instance the service client for shelf lifting
+    # Instance the elevator publisher
+    elevator_publisher = ElevatorPublisher()
+
+    # Instance the footprint publisher
+    footprint_publisher = PolygonPublisher()
+    
+    # Instance the service client for shelf lifting
+    for n in range(5):
         client = ClientAsync()
-        print('Calling shelf lifting service.')
+        print(f'Attempt {n+1}: Calling shelf lifting service.')
         client.send_request()
-
-        
 
         while rclpy.ok():
             rclpy.spin_once(client)
@@ -197,16 +211,16 @@ def main():
                 break
 
         client.destroy_node()
+        if response.complete == True:
+            elevator_publisher.lift()
+            break
 
-    elif result == TaskResult.CANCELED:
-        print('Task at ' + request_item_location +
-              ' was canceled. Returning to staging point...')
-        initial_pose.header.stamp = navigator.get_clock().now().to_msg()
-        navigator.goToPose(initial_pose)
+    if n + 1 == 5: exit(-1)
 
-    elif result == TaskResult.FAILED:
-        print('Task at ' + request_item_location + ' failed!')
-        exit(-1)
+    # Handle lift and backwards movement
+    footprint_publisher.publish_polygon('square')
+    mover = RobotMover()
+    mover.move_back()
 
     # Go to the corridor
     request_item_location = 'corridor'
@@ -217,7 +231,7 @@ def main():
     shelf_item_pose.pose.position.y = shelf_positions[request_item_location][1]
     shelf_item_pose.pose.orientation.z = shelf_positions[request_item_location][2]
     shelf_item_pose.pose.orientation.w = shelf_positions[request_item_location][3]
-    print('Moving item to ' + request_item_location + '.')
+    print('Moving robot to ' + request_item_location + '.')
     navigator.goToPose(shelf_item_pose)
 
     i = 0
@@ -244,6 +258,8 @@ def main():
         print('Task at ' + request_item_location + ' failed!')
         exit(-1)
 
+    
+
     # Got to the shipping position
     request_item_location = 'shipping_position'
     shelf_item_pose = PoseStamped()
@@ -253,7 +269,7 @@ def main():
     shelf_item_pose.pose.position.y = shelf_positions[request_item_location][1]
     shelf_item_pose.pose.orientation.z = shelf_positions[request_item_location][2]
     shelf_item_pose.pose.orientation.w = shelf_positions[request_item_location][3]
-    print('Moving item to ' + request_item_location + '.')
+    print('Moving robot to ' + request_item_location + '.')
     navigator.goToPose(shelf_item_pose)
 
     i = 0
@@ -270,8 +286,7 @@ def main():
     if result == TaskResult.SUCCEEDED:
         print('Unloading the shelf.')
         footprint_publisher.publish_polygon('circle')
-        elevator_publisher.publish_msg()
-        mover = RobotMover()
+        elevator_publisher.drop()
         mover.move_back()
 
     elif result == TaskResult.CANCELED:
@@ -294,7 +309,7 @@ def main():
     shelf_item_pose.pose.position.y = shelf_positions[request_item_location][1]
     shelf_item_pose.pose.orientation.z = shelf_positions[request_item_location][2]
     shelf_item_pose.pose.orientation.w = shelf_positions[request_item_location][3]
-    print('Moving item to ' + request_item_location + '.')
+    print('Moving robot to ' + request_item_location + '.')
     navigator.goToPose(shelf_item_pose)
 
     i = 0

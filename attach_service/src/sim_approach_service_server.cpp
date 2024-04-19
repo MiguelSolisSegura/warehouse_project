@@ -77,19 +77,24 @@ private:
     void handle_service(const std::shared_ptr<GoToLoading::Request>, std::shared_ptr<GoToLoading::Response> response) {
         // Handle request
         RCLCPP_INFO(this->get_logger(), "Legs detected: %i.", _num_legs);
+        RCLCPP_INFO(this->get_logger(), "L: %i R: %i.", _leg_data[0].first, _leg_data[1].first);
+        
         if (_num_legs == 2) {
             // Publish cart frame
             RCLCPP_INFO(this->get_logger(), "Publishing cart frame.");
             this->publish_cart_frame();
+            
             // Handle approach
             RCLCPP_INFO(this->get_logger(), "Approaching to cart.");
-            if (!this->approach_cart("robot_front_laser_base_link", "cart_frame", false)) {
+            if (!this->approach_cart("robot_front_laser_base_link", "cart_frame")) {
                 RCLCPP_INFO(this->get_logger(), "The robot did not aligned to the cart correctly.");
                 response->complete = false;
+                return;
             }
-            if (!this->approach_cart("robot_front_laser_base_link", "cart_center", true)) {
+            if (!this->approach_cart("robot_front_laser_base_link", "cart_center")) {
                 RCLCPP_INFO(this->get_logger(), "The robot did not get under the cart correctly.");
                 response->complete = false;
+                return;
             }
             response->complete = true;
         }
@@ -169,7 +174,7 @@ private:
             attempts += 1;
             try {
                 geometry_msgs::msg::TransformStamped odom_to_laser;
-                odom_to_laser = _tf_buffer->lookupTransform(parent_fame, "robot_front_laser_base_link", tf2::TimePointZero);
+                odom_to_laser = _tf_buffer->lookupTransform(parent_fame, laser_frame, tf2::TimePointZero);
 
                 geometry_msgs::msg::TransformStamped laser_to_cart;
                 laser_to_cart.header.frame_id = laser_frame;
@@ -213,7 +218,7 @@ private:
         } while (!success && attempts <= 10);
     }
 
-    bool approach_cart(std::string origin_frame, std::string target_frame, bool perform_lift) {
+    bool approach_cart(std::string origin_frame, std::string target_frame) {
         int attempts = 0;
         bool success = false;
         bool completed = false;
@@ -241,7 +246,7 @@ private:
                     if (error_distance > 0.02) {
                         //  Set velocity
                         vel_msg.angular.z = -1.0 * error_yaw;  
-                        vel_msg.linear.x = std::min(2.0 * error_distance, 0.1);
+                        vel_msg.linear.x = std::min(2.0 * error_distance, 0.25);
                         RCLCPP_DEBUG(this->get_logger(), "Z angular: %.3f", vel_msg.angular.z);
                         RCLCPP_DEBUG(this->get_logger(), "X linear: %.3f", vel_msg.linear.x);
                         // Pubish velocity
@@ -254,30 +259,6 @@ private:
                         vel_msg.linear.x = 0;
                         _publisher->publish(vel_msg);
                         RCLCPP_INFO(this->get_logger(), "Approach to %s completed.", target_frame.c_str());
-                        if (perform_lift) {
-                            RCLCPP_INFO(this->get_logger(), "Lifting the shelf.");
-                            String msg;
-                            _elevator_publisher->publish(msg);
-                            rclcpp::sleep_for(5s);
-                            RCLCPP_INFO(this->get_logger(), "Lift finished.");
-                            RCLCPP_INFO(this->get_logger(), "Moving backwards.");
-                            start_time = this->get_clock()->now();
-                            elapsed_time = this->get_clock()->now() - start_time;
-                            rclcpp::Duration timeout(45, 0);
-                            vel_msg.linear.x = -0.1;
-                            while (rclcpp::ok() && elapsed_time < timeout) {
-                                elapsed_time = this->get_clock()->now() - start_time;
-                                t = _tf_buffer->lookupTransform("cart_frame", "robot_front_laser_base_link", tf2::TimePointZero);
-                                x = t.transform.translation.x;
-                                if (x < -0.8) {break;}
-                                else {_publisher->publish(vel_msg);}
-                                rclcpp::sleep_for(100ms);
-                            }
-                            
-                            RCLCPP_INFO(this->get_logger(), "Finished backwards motion.");
-                            vel_msg.linear.x = 0.0;
-                            _publisher->publish(vel_msg);
-                        }
                         completed = true;
                         break;
                     }
@@ -286,10 +267,12 @@ private:
             catch (const tf2::LookupException & ex) {
                 RCLCPP_INFO(this->get_logger(), "Could not perform some of the transformations. Please check the frame names.");
                 RCLCPP_INFO(this->get_logger(), "%s", ex.what());
+                rclcpp::sleep_for(1s);
             }
             catch (const tf2::TransformException & ex) {
                 RCLCPP_INFO(this->get_logger(), "Could not perform some of the transformations. Please check the frame names.");
                 RCLCPP_INFO(this->get_logger(), "%s", ex.what());
+                rclcpp::sleep_for(1s);
             }
         } while (!success && attempts <= 10);
         return completed; 
